@@ -18,6 +18,29 @@ final class AudioMeter: ObservableObject {
         case red
     }
 
+    enum FrequencyWeighting: String, CaseIterable, Identifiable {
+        case flat = "Flat"
+        case aWeighting = "A"
+
+        var id: String { rawValue }
+    }
+
+    enum IntegrationPreset: String, CaseIterable, Identifiable {
+        case fast = "Fast"
+        case slow = "Slow"
+
+        var id: String { rawValue }
+
+        var timeConstantSeconds: Float {
+            switch self {
+            case .fast:
+                return 0.125
+            case .slow:
+                return 1.0
+            }
+        }
+    }
+
     @Published private(set) var decibelLevel: Float = -80.0
     @Published private(set) var peakLevel: Float = -80.0
     @Published private(set) var statusText: String = "Requesting microphone access..."
@@ -29,6 +52,18 @@ final class AudioMeter: ObservableObject {
     @Published var yellowThreshold: Float = 65.0
     @Published var redThreshold: Float = 75.0
     @Published var smoothing: Double = 0.65
+    @Published var weighting: FrequencyWeighting = .flat {
+        didSet {
+            guard oldValue != weighting, isRunning else { return }
+            restartMetering(reason: "Applying metering settings …")
+        }
+    }
+    @Published var integrationPreset: IntegrationPreset = .fast {
+        didSet {
+            guard oldValue != integrationPreset, isRunning else { return }
+            restartMetering(reason: "Applying metering settings …")
+        }
+    }
 
     private let engine = AVAudioEngine()
     private var flashTimer: Timer?
@@ -45,6 +80,9 @@ final class AudioMeter: ObservableObject {
     private let peakDecayPerSecond: Float = 12.0
     private let mutedFloorThresholdDb: Float = -79.5
 
+    private var currentInputGainScalar: Float = 1.0
+    private var hasInputGainMetadata = false
+
     var readout: String {
         guard isRunning else { return "--.- dB" }
         guard !isEffectivelyMuted else { return "--.- dB" }
@@ -56,9 +94,26 @@ final class AudioMeter: ObservableObject {
     }
 
     var menuBarTitle: String {
-        guard isRunning else { return "-- dB" }
-        guard !isEffectivelyMuted else { return "-- dB" }
+        guard isRunning else { return "-- dBFS" }
+        guard !isEffectivelyMuted else { return "-- dBFS" }
         return formatDecibels(displayedDecibelLevel, precision: 0)
+    }
+
+    var measurementLabel: String {
+        "Displayed as dBFS"
+    }
+
+    var estimatedSPLReadout: String {
+        guard isRunning else { return "Estimated SPL: --.- dB" }
+        guard hasInputGainMetadata else { return "Estimated SPL: unavailable" }
+        let estimatedSPL = gainCompensatedDecibels + displayOffsetDb
+        return "Estimated SPL: \(formatDecibels(estimatedSPL, precision: 1))"
+    }
+
+    var gainMetadataReadout: String {
+        guard hasInputGainMetadata else { return "Input gain metadata unavailable" }
+        let gainDb = 20.0 * log10(max(currentInputGainScalar, 0.0001))
+        return String(format: "Input gain compensation: %.1f dB", gainDb)
     }
 
     var isEffectivelyMuted: Bool {
@@ -104,6 +159,11 @@ final class AudioMeter: ObservableObject {
 
     var displayedDecibelLevel: Float {
         max(decibelLevel + displayOffsetDb, 0)
+    }
+
+    var gainCompensatedDecibels: Float {
+        let gainDb = 20.0 * log10(max(currentInputGainScalar, 0.0001))
+        return decibelLevel - gainDb
     }
 
     var displayedPeakLevel: Float {
@@ -188,6 +248,8 @@ final class AudioMeter: ObservableObject {
     private func startMetering() {
         guard !isRunning else { return }
 
+        refreshCurrentInputGainMetadata()
+
         guard startEngineCapture() else {
             statusText = "Failed to start microphone capture."
             return
@@ -234,10 +296,12 @@ final class AudioMeter: ObservableObject {
             return false
         }
 
+        let weightingForSession = weighting
+
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: hardwareFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            let rawDb = Self.calculateDecibels(from: buffer)
+            let rawDb = Self.calculateDecibels(from: buffer, weighting: weightingForSession)
             Task { @MainActor in
                 self.processSample(rawDecibels: rawDb)
             }
@@ -307,6 +371,22 @@ final class AudioMeter: ObservableObject {
             return Self.defaultInputDeviceID()
         }
         return Self.deviceID(forUID: selectedInputID)
+    }
+
+    private func refreshCurrentInputGainMetadata() {
+        guard let deviceID = selectedAudioDeviceID() else {
+            currentInputGainScalar = 1.0
+            hasInputGainMetadata = false
+            return
+        }
+
+        if let scalar = Self.inputGainScalar(deviceID: deviceID) {
+            currentInputGainScalar = max(scalar, 0.0001)
+            hasInputGainMetadata = true
+        } else {
+            currentInputGainScalar = 1.0
+            hasInputGainMetadata = false
+        }
     }
 
     private static func fetchInputDevices() -> [AudioInputDevice] {
@@ -388,6 +468,22 @@ final class AudioMeter: ObservableObject {
         getAudioProperty(deviceID, selector: kAudioDevicePropertyDeviceUID)
     }
 
+    private static func inputGainScalar(deviceID: AudioDeviceID) -> Float? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        guard AudioObjectHasProperty(deviceID, &address) else { return nil }
+
+        var gain: Float32 = 1.0
+        var size = UInt32(MemoryLayout<Float32>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &gain)
+        guard status == noErr else { return nil }
+        return gain
+    }
+
     private static func getAudioProperty(_ deviceID: AudioDeviceID, selector: AudioObjectPropertySelector) -> String? {
         var address = AudioObjectPropertyAddress(
             mSelector: selector,
@@ -437,18 +533,25 @@ final class AudioMeter: ObservableObject {
     private func processSample(rawDecibels: Float) {
         let adjusted = max(min(rawDecibels, maxDb), minDb)
 
-        let riseResponse = Float(max(0.02, min(0.35, 1.0 - smoothing)))
-        let fallResponse = max(0.01, riseResponse * 0.55)
+        let now = Date()
+        let dt = max(Float(now.timeIntervalSince(lastSampleTime)), 0.001)
+
+        let averagingAlpha = responseAlpha(timeDelta: dt, timeConstant: integrationPreset.timeConstantSeconds)
+        let manualResponse = Float(max(0.02, min(0.35, 1.0 - smoothing)))
+        let riseResponse = max(averagingAlpha, manualResponse)
+        let fallResponse = max(0.01, min(riseResponse, averagingAlpha * 0.8))
         let response = adjusted > smoothedLevel ? riseResponse : fallResponse
 
         smoothedLevel += (adjusted - smoothedLevel) * response
         decibelLevel = smoothedLevel
-
-        let now = Date()
-        let dt = max(Float(now.timeIntervalSince(lastSampleTime)), 0)
         lastSampleTime = now
 
         updatePeakLevel(now: now, timeDelta: dt)
+    }
+
+    private func responseAlpha(timeDelta: Float, timeConstant: Float) -> Float {
+        let tau = max(timeConstant, 0.01)
+        return max(0.005, min(0.95, 1.0 - exp(-timeDelta / tau)))
     }
 
     private func updatePeakLevel(now: Date, timeDelta: Float) {
@@ -483,17 +586,35 @@ final class AudioMeter: ObservableObject {
         }
     }
 
-    private static func calculateDecibels(from buffer: AVAudioPCMBuffer) -> Float {
+    private static func calculateDecibels(from buffer: AVAudioPCMBuffer, weighting: FrequencyWeighting) -> Float {
         let frameLength = Int(buffer.frameLength)
         guard frameLength > 0, let channelData = buffer.floatChannelData else { return -80.0 }
 
         let channelCount = max(Int(buffer.format.channelCount), 1)
         var sumSquares: Float = 0
+        let sampleRate = Float(buffer.format.sampleRate)
+        let highPassCoeff = firstOrderHighPassCoefficient(sampleRate: sampleRate, cutoffHz: 120.0)
+        let lowPassCoeff = firstOrderLowPassCoefficient(sampleRate: sampleRate, cutoffHz: 9000.0)
 
         for channel in 0..<channelCount {
             let samples = channelData[channel]
+            var hpState: Float = 0
+            var hpInputState: Float = 0
+            var lpState: Float = 0
+
             for index in 0..<frameLength {
-                let s = samples[index]
+                var s = samples[index]
+
+                if weighting == .aWeighting {
+                    let hp = highPassCoeff * (hpState + s - hpInputState)
+                    hpInputState = s
+                    hpState = hp
+
+                    let lp = lpState + lowPassCoeff * (hp - lpState)
+                    lpState = lp
+                    s = lp
+                }
+
                 sumSquares += s * s
             }
         }
@@ -503,5 +624,19 @@ final class AudioMeter: ObservableObject {
 
         let rms = sqrt(sumSquares / Float(sampleCount))
         return rms > 0 ? max(20 * log10(rms), -80.0) : -80.0
+    }
+
+    private static func firstOrderHighPassCoefficient(sampleRate: Float, cutoffHz: Float) -> Float {
+        guard sampleRate > 0 else { return 0.0 }
+        let dt = 1.0 / sampleRate
+        let rc = 1.0 / (2.0 * Float.pi * max(cutoffHz, 1.0))
+        return rc / (rc + dt)
+    }
+
+    private static func firstOrderLowPassCoefficient(sampleRate: Float, cutoffHz: Float) -> Float {
+        guard sampleRate > 0 else { return 0.0 }
+        let dt = 1.0 / sampleRate
+        let rc = 1.0 / (2.0 * Float.pi * max(cutoffHz, 1.0))
+        return dt / (rc + dt)
     }
 }

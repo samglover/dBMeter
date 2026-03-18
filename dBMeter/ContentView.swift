@@ -78,10 +78,58 @@ struct ContentView: View {
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .monospacedDigit()
 
+            Text(audioMeter.measurementLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             ProgressView(value: audioMeter.normalizedLevel)
                 .progressViewStyle(.linear)
                 .tint(meterTintColor)
+
+            Text(audioMeter.estimatedSPLReadout)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(audioMeter.gainMetadataReadout)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             
+            Divider()
+
+            Text("Metering")
+
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Weighting")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Weighting", selection: $audioMeter.weighting) {
+                        ForEach(AudioMeter.FrequencyWeighting.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+//                    .frame(width: 120)
+                    .labelsHidden()
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .leading) {
+                    Text("Integration")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Integration", selection: $audioMeter.integrationPreset) {
+                        ForEach(AudioMeter.IntegrationPreset.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+//                    .frame(width: 120)
+                    .labelsHidden()
+                }
+            }
+
             Divider()
 
             HStack {

@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func setupPopover() {
         popover.behavior = .transient
         popover.delegate = self
-        popover.contentSize = NSSize(width: 300, height: 520)
+        popover.contentSize = NSSize(width: 320, height: 620)
         popover.contentViewController = NSHostingController(
             rootView: ContentView().environmentObject(audioMeter)
         )
@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
         button.wantsLayer = false
-        button.title = "-- dB"
+        button.title = "-- dBFS"
     }
 
     private func startStatusUpdateTimer() {
