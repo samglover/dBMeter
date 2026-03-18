@@ -1,6 +1,43 @@
 import AppKit
 import SwiftUI
 
+final class PopoverHostingController<Content: View>: NSViewController {
+    private let rootView: Content
+    private let hostingController: NSHostingController<Content>
+
+    init(rootView: Content) {
+        self.rootView = rootView
+        self.hostingController = NSHostingController(rootView: rootView)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func loadView() {
+        let effectView = NSVisualEffectView()
+        effectView.material = .popover
+        effectView.blendingMode = .behindWindow
+        effectView.state = .followsWindowActiveState
+
+        addChild(hostingController)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.wantsLayer = false
+        effectView.addSubview(hostingController.view)
+
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+            hostingController.view.topAnchor.constraint(equalTo: effectView.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
+        ])
+
+        view = effectView
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let audioMeter = AudioMeter()
 
@@ -31,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentSize = NSSize(width: 320, height: 620)
-        popover.contentViewController = NSHostingController(
+        popover.contentViewController = PopoverHostingController(
             rootView: ContentView().environmentObject(audioMeter)
         )
     }
@@ -127,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }

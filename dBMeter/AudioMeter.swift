@@ -84,13 +84,13 @@ final class AudioMeter: ObservableObject {
     private var hasInputGainMetadata = false
 
     var readout: String {
-        guard isRunning else { return "--.- dB" }
-        guard !isEffectivelyMuted else { return "--.- dB" }
+        guard isRunning else { return "--.- dBFS" }
+        guard !isEffectivelyMuted else { return "--.- dBFS" }
         return formatDecibels(displayedDecibelLevel, precision: 1)
     }
 
     var peakReadout: String {
-        isRunning ? formatDecibels(displayedPeakLevel, precision: 1) : "--.- dB"
+        isRunning ? formatDecibels(displayedPeakLevel, precision: 1) : "--.- dBFS"
     }
 
     var menuBarTitle: String {
@@ -99,12 +99,8 @@ final class AudioMeter: ObservableObject {
         return formatDecibels(displayedDecibelLevel, precision: 0)
     }
 
-    var measurementLabel: String {
-        "Displayed as dBFS"
-    }
-
     var estimatedSPLReadout: String {
-        guard isRunning else { return "Estimated SPL: --.- dB" }
+        guard isRunning else { return "Estimated SPL: --.- dBFS" }
         guard hasInputGainMetadata else { return "Estimated SPL: unavailable" }
         let estimatedSPL = gainCompensatedDecibels + displayOffsetDb
         return "Estimated SPL: \(formatDecibels(estimatedSPL, precision: 1))"
@@ -113,7 +109,7 @@ final class AudioMeter: ObservableObject {
     var gainMetadataReadout: String {
         guard hasInputGainMetadata else { return "Input gain metadata unavailable" }
         let gainDb = 20.0 * log10(max(currentInputGainScalar, 0.0001))
-        return String(format: "Input gain compensation: %.1f dB", gainDb)
+        return String(format: "Input gain compensation: %.1f dBFS", gainDb)
     }
 
     var isEffectivelyMuted: Bool {
@@ -568,7 +564,7 @@ final class AudioMeter: ObservableObject {
     }
 
     private func formatDecibels(_ value: Float, precision: Int) -> String {
-        String(format: "%.*f dB", precision, value)
+        String(format: "%.*f dBFS", precision, value)
     }
 
     private enum ThresholdRelation {
