@@ -49,8 +49,8 @@ final class AudioMeter: ObservableObject {
     @Published private(set) var isFlashVisible = true
 
     @Published var selectedInputID: String = ""
-    @Published var yellowThreshold: Float = 65.0
-    @Published var redThreshold: Float = 75.0
+    @Published var yellowThreshold: Float = 71.0
+    @Published var redThreshold: Float = 81.0
     @Published var smoothing: Double = 0.65
     @Published var weighting: FrequencyWeighting = .flat {
         didSet {
