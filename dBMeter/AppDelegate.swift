@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
         button.wantsLayer = false
-        button.title = "-- dBFS"
+        button.title = "-- dB"
     }
 
     private func startStatusUpdateTimer() {

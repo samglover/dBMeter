@@ -49,8 +49,8 @@ final class AudioMeter: ObservableObject {
     @Published private(set) var isFlashVisible = true
 
     @Published var selectedInputID: String = ""
-    @Published var yellowThreshold: Float = 71.0
-    @Published var redThreshold: Float = 81.0
+    @Published var yellowThreshold: Float = 76.0
+    @Published var redThreshold: Float = 86.0
     @Published var smoothing: Double = 0.65
     @Published var weighting: FrequencyWeighting = .flat {
         didSet {
@@ -84,23 +84,23 @@ final class AudioMeter: ObservableObject {
     private var hasInputGainMetadata = false
 
     var readout: String {
-        guard isRunning else { return "--.- dBFS" }
-        guard !isEffectivelyMuted else { return "--.- dBFS" }
+        guard isRunning else { return "--.- dB" }
+        guard !isEffectivelyMuted else { return "--.- dB" }
         return formatDecibels(displayedDecibelLevel, precision: 1)
     }
 
     var peakReadout: String {
-        isRunning ? formatDecibels(displayedPeakLevel, precision: 1) : "--.- dBFS"
+        isRunning ? formatDecibels(displayedPeakLevel, precision: 1) : "--.- dB"
     }
 
     var menuBarTitle: String {
-        guard isRunning else { return "-- dBFS" }
-        guard !isEffectivelyMuted else { return "-- dBFS" }
+        guard isRunning else { return "-- dB" }
+        guard !isEffectivelyMuted else { return "-- dB" }
         return formatDecibels(displayedDecibelLevel, precision: 0)
     }
 
     var estimatedSPLReadout: String {
-        guard isRunning else { return "Estimated SPL: --.- dBFS" }
+        guard isRunning else { return "Estimated SPL: --.- dB" }
         guard hasInputGainMetadata else { return "Estimated SPL: unavailable" }
         let estimatedSPL = gainCompensatedDecibels + displayOffsetDb
         return "Estimated SPL: \(formatDecibels(estimatedSPL, precision: 1))"
@@ -109,7 +109,7 @@ final class AudioMeter: ObservableObject {
     var gainMetadataReadout: String {
         guard hasInputGainMetadata else { return "Input gain metadata unavailable" }
         let gainDb = 20.0 * log10(max(currentInputGainScalar, 0.0001))
-        return String(format: "Input gain compensation: %.1f dBFS", gainDb)
+        return String(format: "Input gain compensation: %.1f dB", gainDb)
     }
 
     var isEffectivelyMuted: Bool {
@@ -564,7 +564,7 @@ final class AudioMeter: ObservableObject {
     }
 
     private func formatDecibels(_ value: Float, precision: Int) -> String {
-        String(format: "%.*f dBFS", precision, value)
+        String(format: "%.*f dB", precision, value)
     }
 
     private enum ThresholdRelation {
