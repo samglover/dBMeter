@@ -2,221 +2,230 @@ import AppKit
 import SwiftUI
 
 final class PopoverHostingController<Content: View>: NSViewController {
-    private let rootView: Content
-    private let hostingController: NSHostingController<Content>
+	private let rootView: Content
+	private let hostingController: NSHostingController<Content>
 
-    init(rootView: Content) {
-        self.rootView = rootView
-        self.hostingController = NSHostingController(rootView: rootView)
-        super.init(nibName: nil, bundle: nil)
-    }
+	init(rootView: Content) {
+		self.rootView = rootView
+		self.hostingController = NSHostingController(rootView: rootView)
+		super.init(nibName: nil, bundle: nil)
+	}
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
+	@available(*, unavailable)
+	required init?(coder: NSCoder) {
+		nil
+	}
 
-    override func loadView() {
-        let effectView = NSVisualEffectView()
-        effectView.material = .popover
-        effectView.blendingMode = .behindWindow
-        effectView.state = .followsWindowActiveState
+	override func loadView() {
+		let effectView = NSVisualEffectView()
+		effectView.material = .popover
+		effectView.blendingMode = .behindWindow
+		effectView.state = .followsWindowActiveState
 
-        addChild(hostingController)
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        hostingController.view.wantsLayer = false
-        effectView.addSubview(hostingController.view)
+		addChild(hostingController)
+		hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+		hostingController.view.wantsLayer = false
+		effectView.addSubview(hostingController.view)
 
-        NSLayoutConstraint.activate([
-            hostingController.view.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
-            hostingController.view.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
-            hostingController.view.topAnchor.constraint(equalTo: effectView.topAnchor),
-            hostingController.view.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
-        ])
+		NSLayoutConstraint.activate([
+			hostingController.view.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+			hostingController.view.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+			hostingController.view.topAnchor.constraint(equalTo: effectView.topAnchor),
+			hostingController.view.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
+		])
 
-        view = effectView
-    }
+		view = effectView
+	}
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
-    let audioMeter = AudioMeter()
+	let audioMeter = AudioMeter()
 
-    private var statusItem: NSStatusItem?
-    private let popover = NSPopover()
-    private var statusUpdateTimer: Timer?
-    private var isUpdatingStatusItem = false
-    private var lastRenderedTitle: String = ""
-    private var localClickMonitor: Any?
-    private var globalClickMonitor: Any?
+	private var statusItem: NSStatusItem?
+	private let popover = NSPopover()
+	private var statusUpdateTimer: Timer?
+	private var isUpdatingStatusItem = false
+	private var lastRenderedTitle: String = ""
+	private var localClickMonitor: Any?
+	private var globalClickMonitor: Any?
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        _ = notification
-        setupPopover()
-        setupStatusItem()
-        startStatusUpdateTimer()
-        audioMeter.startMonitoring()
-        updateStatusItemAppearance()
-    }
+	func applicationDidFinishLaunching(_ notification: Notification) {
+		_ = notification
+		setupPopover()
+		setupStatusItem()
+		startStatusUpdateTimer()
+		audioMeter.startMonitoring()
+		updateStatusItemAppearance()
+	}
 
-    func applicationWillTerminate(_ notification: Notification) {
-        _ = notification
-        statusUpdateTimer?.invalidate()
-        statusUpdateTimer = nil
-    }
+	func applicationWillTerminate(_ notification: Notification) {
+		_ = notification
+		statusUpdateTimer?.invalidate()
+		statusUpdateTimer = nil
+	}
 
-    private func setupPopover() {
-        popover.behavior = .transient
-        popover.delegate = self
-        popover.contentSize = NSSize(width: 320, height: 620)
-        popover.contentViewController = PopoverHostingController(
-            rootView: ContentView().environmentObject(audioMeter)
-        )
-    }
+	private func setupPopover() {
+		popover.behavior = .transient
+		popover.delegate = self
+		popover.contentSize = NSSize(width: 320, height: 620)
+		popover.contentViewController = PopoverHostingController(
+			rootView: ContentView().environmentObject(audioMeter)
+		)
+	}
 
-    private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem = item
+	private func setupStatusItem() {
+		let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+		statusItem = item
 
-        guard let button = item.button else { return }
-        button.target = self
-        button.action = #selector(handleStatusItemClick(_:))
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        button.wantsLayer = false
-        button.title = "-- dB"
-    }
+		guard let button = item.button else { return }
+		button.target = self
+		button.action = #selector(handleStatusItemClick(_:))
+		button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+		button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+		button.wantsLayer = false
+		button.title = "-- dB"
+	}
 
-    private func startStatusUpdateTimer() {
-        statusUpdateTimer?.invalidate()
-        statusUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
-            self?.updateStatusItemAppearance()
-        }
-    }
+	private func startStatusUpdateTimer() {
+		statusUpdateTimer?.invalidate()
+		statusUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+			self?.updateStatusItemAppearance()
+		}
+	}
 
-    private func updateStatusItemAppearance() {
-        guard !isUpdatingStatusItem else { return }
-        isUpdatingStatusItem = true
-        defer { isUpdatingStatusItem = false }
+	private func updateStatusItemAppearance() {
+		guard !isUpdatingStatusItem else { return }
+		isUpdatingStatusItem = true
+		defer { isUpdatingStatusItem = false }
 
-        guard let button = statusItem?.button else { return }
+		guard let button = statusItem?.button else { return }
 
-        let backgroundColor: NSColor
+		let title = "\(audioMeter.menuBarTitle)"
+		let needsTitleUpdate = title != lastRenderedTitle
 
-        if audioMeter.isFlashVisible {
-            switch audioMeter.alertLevel {
-            case .none:
-                backgroundColor = .clear
-            case .yellow:
-                backgroundColor = .systemYellow
-            case .red:
-                backgroundColor = .systemRed
-            }
-        } else {
-            backgroundColor = .clear
-        }
+		let backgroundColor: NSColor
+		if audioMeter.isFlashVisible {
+			switch audioMeter.alertLevel {
+			case .none:
+				backgroundColor = .clear
+			case .yellow:
+				backgroundColor = .systemYellow
+			case .red:
+				backgroundColor = .systemRed
+			}
+		} else {
+			backgroundColor = .clear
+		}
 
-        let title = "\(audioMeter.menuBarTitle)"
-        let stateChanged = title != lastRenderedTitle
+		let needsColorUpdate = !colorsEqual(button.layer?.backgroundColor?.nsColor ?? .clear, backgroundColor)
 
-        if stateChanged {
-            // Use the native menu bar text rendering path.
-            button.contentTintColor = nil
-            button.title = title
-            lastRenderedTitle = title
-        }
+		// Only update if something actually changed
+		guard needsTitleUpdate || needsColorUpdate else { return }
 
-        if colorsEqual(backgroundColor, .clear) {
-            // Explicitly clear any previously painted layer background.
-            button.layer?.backgroundColor = NSColor.clear.cgColor
-            button.wantsLayer = false
-        } else {
-            button.wantsLayer = true
-            button.layer?.masksToBounds = true
-            button.layer?.cornerRadius = max(6, button.bounds.height / 2)
-            button.layer?.backgroundColor = backgroundColor.cgColor
-        }
-    }
+		if needsTitleUpdate {
+			button.title = title
+			lastRenderedTitle = title
+		}
 
-    private func colorsEqual(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-        let left = lhs.usingColorSpace(.deviceRGB) ?? lhs
-        let right = rhs.usingColorSpace(.deviceRGB) ?? rhs
-        return left == right
-    }
+		if needsColorUpdate {
+			if colorsEqual(backgroundColor, .clear) {
+				button.layer?.backgroundColor = NSColor.clear.cgColor
+				button.wantsLayer = false
+			} else {
+				button.wantsLayer = true
+				button.layer?.masksToBounds = true
+				button.layer?.cornerRadius = max(6, button.bounds.height / 2)
+				button.layer?.backgroundColor = backgroundColor.cgColor
+			}
+		}
+	}
 
-    @objc
-    private func handleStatusItemClick(_ sender: AnyObject?) {
-        guard let event = NSApp.currentEvent else { return }
+	private func colorsEqual(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
+		let left = lhs.usingColorSpace(.deviceRGB) ?? lhs
+		let right = rhs.usingColorSpace(.deviceRGB) ?? rhs
+		return left == right
+	}
 
-        if popover.isShown {
-            popover.performClose(sender)
-            return
-        }
+	@objc
+	private func handleStatusItemClick(_ sender: AnyObject?) {
+		guard let event = NSApp.currentEvent else { return }
 
-        if event.type == .leftMouseUp {
-            audioMeter.toggleRunning()
-            return
-        }
+		if popover.isShown {
+			popover.performClose(sender)
+			return
+		}
 
-        guard event.type == .rightMouseUp else { return }
+		if event.type == .leftMouseUp {
+			audioMeter.toggleRunning()
+			return
+		}
 
-        guard let button = statusItem?.button else { return }
+		guard event.type == .rightMouseUp else { return }
 
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        }
-    }
+		guard let button = statusItem?.button else { return }
 
-    func popoverDidShow(_ notification: Notification) {
-        _ = notification
-        installOutsideClickDismissMonitors()
-    }
+		if popover.isShown {
+			popover.performClose(sender)
+		} else {
+			NSApp.activate(ignoringOtherApps: true)
+			popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		}
+	}
 
-    func popoverDidClose(_ notification: Notification) {
-        _ = notification
-        removeOutsideClickDismissMonitors()
-    }
+	func popoverDidShow(_ notification: Notification) {
+		_ = notification
+		installOutsideClickDismissMonitors()
+	}
 
-    private func installOutsideClickDismissMonitors() {
-        guard localClickMonitor == nil, globalClickMonitor == nil else { return }
+	func popoverDidClose(_ notification: Notification) {
+		_ = notification
+		removeOutsideClickDismissMonitors()
+	}
 
-        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            self?.closePopoverIfClickIsOutside()
-            return event
-        }
+	private func installOutsideClickDismissMonitors() {
+		guard localClickMonitor == nil, globalClickMonitor == nil else { return }
 
-        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.closePopoverIfClickIsOutside()
-            }
-        }
-    }
+		localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+			self?.closePopoverIfClickIsOutside()
+			return event
+		}
 
-    private func removeOutsideClickDismissMonitors() {
-        if let localClickMonitor {
-            NSEvent.removeMonitor(localClickMonitor)
-            self.localClickMonitor = nil
-        }
-        if let globalClickMonitor {
-            NSEvent.removeMonitor(globalClickMonitor)
-            self.globalClickMonitor = nil
-        }
-    }
+		globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+			DispatchQueue.main.async {
+				self?.closePopoverIfClickIsOutside()
+			}
+		}
+	}
 
-    private func closePopoverIfClickIsOutside() {
-        guard popover.isShown else { return }
-        guard let popoverWindow = popover.contentViewController?.view.window else {
-            popover.performClose(nil)
-            return
-        }
+	private func removeOutsideClickDismissMonitors() {
+		if let localClickMonitor {
+			NSEvent.removeMonitor(localClickMonitor)
+			self.localClickMonitor = nil
+		}
+		if let globalClickMonitor {
+			NSEvent.removeMonitor(globalClickMonitor)
+			self.globalClickMonitor = nil
+		}
+	}
 
-        let clickLocation = NSEvent.mouseLocation
-        if popoverWindow.frame.contains(clickLocation) {
-            return
-        }
+	private func closePopoverIfClickIsOutside() {
+		guard popover.isShown else { return }
+		guard let popoverWindow = popover.contentViewController?.view.window else {
+			popover.performClose(nil)
+			return
+		}
 
-        popover.performClose(nil)
-    }
+		let clickLocation = NSEvent.mouseLocation
+		if popoverWindow.frame.contains(clickLocation) {
+			return
+		}
+
+		popover.performClose(nil)
+	}
+}
+
+extension CGColor {
+	var nsColor: NSColor {
+		NSColor(cgColor: self) ?? .clear
+	}
 }
