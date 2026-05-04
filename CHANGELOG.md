@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. The format 
 ### Added
 - Copilot instructions
 - App icon
+- README.md
 
 ### Removed
 - Advanced settings
